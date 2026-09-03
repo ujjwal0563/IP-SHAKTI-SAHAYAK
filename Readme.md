@@ -2,76 +2,91 @@
 
 ### **Intelligent IP & Regulatory Guidance for Ayurveda Innovation**
 
-**A multilingual, source-grounded RAG platform for navigating Intellectual Property, Traditional Knowledge, biological-resource considerations, and regulatory pathways for Ayurveda.**
+**A multilingual, RAG-based (source-cited) AI assistant for Intellectual Property, Traditional Knowledge, Access & Benefit Sharing (ABS), and drug-regulatory guidance in Ayurveda across national and international regimes.**
 
-## 1. Executive Summary
+---
 
-**IP-SAKTI Sahayak** is a multilingual AI-powered decision-support platform designed to help **Ayurveda innovators, researchers, entrepreneurs, practitioners, and organizations** navigate the complex intersection of:
+# 1. Executive Summary
 
-- Intellectual Property (IP)
-- Traditional Knowledge (TK)
-- Biological resources and Access & Benefit Sharing (ABS)
-- Ayurveda-related regulation
-- National and international IP/regulatory frameworks
+**IP-SAKTI Sahayak** is an authoritative, multilingual AI-powered decision-support platform engineered specifically for **Ayurveda practitioners, researchers, AYUSH startups, MSMEs, cultivators, and academic institutions**.
 
-The core challenge is not a lack of information. The challenge is that **relevant information is fragmented across different laws, authorities, portals, regulations, documents, and jurisdictions**.
+Ayurveda rests on an immense corpus of codified and community-held **Traditional Knowledge (TK)** and therapeutics derived from plant, microbial, and animal biological sources. Bringing an Ayurvedic product to life—from research to commercialization—requires navigating several overlapping legal and statutory regimes simultaneously:
 
-IP-SAKTI Sahayak addresses this fragmentation through a **Retrieval-Augmented Generation (RAG)** architecture. Instead of relying only on an LLM's internal knowledge, the system retrieves relevant information from a curated knowledge base and generates an answer that is **grounded in evidence and linked to source documents**.
+- **Intellectual Property (IPR):** Patents, Geographical Indications (GI), Trademarks, Copyright, Industrial Designs, Trade Secrets, and Protection of Plant Varieties & Farmers' Rights (PPV&FR).
+- **Biodiversity Sovereignty & ABS:** Access and Benefit Sharing (ABS) duties flowing from India’s sovereign rights over its biological resources under the National Biodiversity Authority (NBA) and State Biodiversity Boards (SBB).
+- **Drug & Food Regulatory Classification:** The statutory drug-regulatory framework determining whether a formulation is a **Classical / Generic Medicine**, a **Patent-or-Proprietary (P&P) Medicine**, a **New Drug**, a **Phytopharmaceutical**, an **Ayurveda-Aahar / Nutraceutical**, or a **Cosmetic**.
+- **Dual-Layer Jurisdictions:** National legal frameworks vs. International treaties and export-market regulations, strictly bifurcated via an explicit jurisdiction switch so answers are never conflated.
 
-> **Vision:** Make complex IP and regulatory information more accessible, traceable, multilingual, and actionable for Ayurveda innovation.
+Built on **Retrieval-Augmented Generation (RAG)** grounded in an authoritative, version-tracked corpus of statutes, rules, pharmacopoeias, treaties, and case records, IP-SAKTI Sahayak provides source-cited, traceable guidance with strict guardrails against legal hallucination.
+
+> **Vision:** Empower the AYUSH ecosystem with authoritative, plain-language guidance to protect legitimate innovation, ensure regulatory and ABS compliance, and prevent the misappropriation of India's traditional knowledge worldwide.
+
+---
 
 # 2. The Problem
 
-Ayurveda is supported by a vast body of codified and community-held traditional knowledge and frequently involves biological resources.
-
-When an Ayurvedic product or innovation moves from **idea → research → protection → commercialization**, an innovator may need to answer several questions simultaneously:
+Protecting and commercializing Ayurvedic innovation is uniquely challenging because **Intellectual Property protection is inseparable from how the product is regulated and sourced**.
 
 ```text
-AYURVEDA INNOVATION
-|
-+-----------------+-----------------+
-|                 |                 |
-v                 v                 v
-IP RIGHTS       TRADITIONAL        REGULATORY
-KNOWLEDGE          REQUIREMENTS
-|                 |                 |
-v                 v                 v
-Patent / TM /      Existing TK /      Product /
-GI / Design /      Prior knowledge    market rules
-Trade Secret
-|
-v
-BIOLOGICAL RESOURCES
-|
-v
-ABS / Compliance
-|
-v
-INTERNATIONAL MARKET
+========================================================================================
+                               AYURVEDIC INNOVATION JOURNEY
+========================================================================================
+                                         |
+                                         v
+                         [ REGULATORY CLASSIFICATION ]
+       (Classical Text? Proprietary? Phytopharm? Ayurveda-Aahar? Cosmetic?)
+                     /                                       \
+                    v                                         v
+    [ IP RIGHTS & TK DEFENSE ]                     [ BIODIVERSITY & ABS COMPLIANCE ]
+    • Patent bar: Section 3(p) TK                  • Biological Diversity Act (2023 / 2024)
+    • TKDL defense vs. New Drug patent             • NBA Form I / SBB Approvals
+    • GI, Trademarks, Designs, PPV&FR              • Benefit sharing on bio-resources
+                    \                                         /
+                     +-------------------+-------------------+
+                                         |
+                                         v
+                            [ JURISDICTION GATEWAY ]
+               +-------------------------+-------------------------+
+               |                                                   |
+               v                                                   v
+     [ NATIONAL REGIME (INDIA) ]                      [ INTERNATIONAL REGIME ]
+     • Patents Act (2024 Rules)                       • WIPO GRATK Treaty (2024)
+     • Drugs & Cosmetics Act (Ch. IV-A)               • Nagoya Protocol / CBD
+     • DMRA (Advertising Rules)                       • PCT / Madrid / Budapest
+     • FSSAI Ayurveda-Aahar (2022)                    • US FDA Botanicals / EU THMPD
+========================================================================================
 ```
 
-### Existing pain points
+### The Core Crisis
 
-**1. Fragmented information**  
-Relevant information is distributed across multiple official sources.
+Today's AYUSH innovators face a double-edged crisis:
+1. **Under-Protected & Under-Commercialized Innovation:** Legitimate innovations developed by domestic Ayurvedic startups, researchers, and MSMEs remain under-protected due to an inability to navigate complex patent barriers (e.g., Section 3(p) non-patentability of traditional knowledge, Section 3(e) mere admixture bar) and drug-approval pathways.
+2. **Vulnerability to Biopiracy Abroad:** India’s vast codified and community-held traditional knowledge remains exposed to predatory patenting and misappropriation in foreign patent offices without fair benefit-sharing.
 
-**2. Complex terminology**  
-Patent, prior art, traditional knowledge, GI, ABS, regulatory and jurisdiction-specific concepts can be difficult for non-specialists.
+### Why the Problem is More Urgent Than Ever (2023–2024 Landscape Shifts)
 
-**3. Traditional Knowledge considerations**  
-An apparently "new" Ayurvedic claim may intersect with knowledge already documented or held traditionally.
+Recent fast-moving statutory and treaty shifts have radically altered the compliance landscape:
+- **Patents Rules (2024):** Revised patent prosecution timelines, altered fee structures, and updated disclosure frameworks in India.
+- **Biological Diversity (Amendment) Act, 2023 & Biological Diversity Rules, 2024:** Overhauled ABS provisions, granting specific exemptions for registered AYUSH practitioners and codified traditional knowledge while establishing stringent, audited benefit-sharing compliance for commercial manufacturing and IPR approvals via the National Biodiversity Authority (NBA).
+- **WIPO GRATK Treaty (Adopted May 2024):** A landmark international treaty on Intellectual Property, Genetic Resources, and Associated Traditional Knowledge mandating patent applicants worldwide to disclose the country of origin of genetic resources and traditional knowledge, closing loopholes for foreign misappropriation.
+- **Heightened Advertising & Drug Scrutiny:** Aggressive judicial and regulatory enforcement of the *Drugs and Magic Remedies (Objectionable Advertisements) Act (DMRA)* and the rollout of the *FSSAI Ayurveda-Aahar Regulations (2022)*.
 
-**4. Multiple legal/regulatory layers**  
-IP protection may be only one part of the commercialization journey.
+### Critical Pain Points for Stakeholders
 
-**5. Language barrier**  
-Important information is often available primarily in English, while many users are more comfortable using Indian languages.
+**1. Inseparability of Formulation Classification & IP Posture**  
+An Ayurvedic innovator cannot evaluate patents in a vacuum. A classical formulation (drawn from a First-Schedule text like *Charaka Samhita* or *Sahasrayogam*) faces the **Section 3(p) patenting bar** and is defended via the **Traditional Knowledge Digital Library (TKDL)**. Conversely, an extracted novel formulation or phytopharmaceutical has patent potential, but triggers rigorous clinical safety and drug efficacy evidence requirements.
 
-**6. Source-traceability problem**  
-A generic AI answer may not clearly show which authoritative document supports an important claim.
+**2. Jurisdictional Conflation & Export Barriers**  
+National requirements (Chapter IV-A of Drugs & Cosmetics Act, Schedule T GMP, State Licensing) are fundamentally different from international export requirements (US FDA Dietary Supplement cGMP / Botanical Guidance, EU Traditional Herbal Medicinal Products Directive 2004/24/EC). Innovators routinely conflate these regimes, resulting in rejected export shipments or invalid foreign patent applications.
 
-**7. Changing rules**  
-Laws, regulations, procedures, notifications, and official guidance can change over time.
+**3. The ABS Compliance Maze**  
+Many entrepreneurs are unaware that commercial utilization of biological resources or filing patents on bio-resources requires prior approval from the NBA (Form I / Form III) or intimation to State Biodiversity Boards (SBB), carrying severe statutory penalties if overlooked.
+
+**4. Information Fragmentation & Hallucination Risks**  
+Authoritative information is scattered across the Indian Patent Office (InPASS), TKDL, NBA, Ministry of AYUSH, Pharmacopoeial Commission (PCIM&H), CDSCO, and WIPO. Generic AI chatbots hallucinate non-existent patent sections, misquote statutory deadlines, and fail to provide verifiable citations.
+
+**5. Language & Accessibility Divide**  
+The vast majority of traditional Vaidyas, grassroots innovators, and cultivators operate primarily in Indian languages (e.g., Hindi), whereas legal statutes, treaty articles, and patent gazettes are drafted in dense English legalese.
 
 # 3. Our Solution
 
