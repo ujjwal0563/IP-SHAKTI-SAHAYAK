@@ -1,0 +1,30 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test and coverage artifacts
+*.out
+*.test
+
+# Environment Variables (Keep secrets safe)
+.env
+!.env.example
+
+# Node / Frontend dependencies (if any)
+node_modules/
+dist/
+
+# OS and IDE files
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Scratch & Logs
+*.log
+scratch/
