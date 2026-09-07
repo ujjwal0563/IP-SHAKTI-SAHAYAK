@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -17,6 +18,9 @@ import (
 )
 
 func main() {
+	autoMigrate := flag.Bool("migrate", true, "Automatically execute database migrations on startup if connected")
+	flag.Parse()
+
 	log.Println("===============================================================")
 	log.Println("🌿 IP-SAKTI Sahayak (आईपी-शक्ति सहायक) - Phase 1 Foundation")
 	log.Println("   Intelligent Ayurveda IP, ABS & Regulatory Decision Support")
@@ -36,6 +40,26 @@ func main() {
 		log.Printf("[Warning] Database pool creation error: %v (running in standalone mode)", err)
 	} else if db != nil {
 		defer db.Close()
+
+		// Verify pgvector extension
+		vectorCtx, vectorCancel := context.WithTimeout(ctx, 2*time.Second)
+		hasVector, version, vectorErr := db.CheckPgvector(vectorCtx)
+		vectorCancel()
+
+		if vectorErr == nil && hasVector {
+			log.Printf("[Database] pgvector extension detected (version: %s) - ready for HNSW vector search", version)
+		} else {
+			log.Printf("[Database Warning] pgvector extension check: %v (pgvector might need 'CREATE EXTENSION vector')", vectorErr)
+		}
+
+		// Run migrations if enabled
+		if *autoMigrate {
+			migrateCtx, migrateCancel := context.WithTimeout(ctx, 30*time.Second)
+			if err := db.Migrate(migrateCtx); err != nil {
+				log.Printf("[Database Warning] Migration execution error: %v", err)
+			}
+			migrateCancel()
+		}
 	}
 
 	// 3. Initialize HTTP Server & Routes
