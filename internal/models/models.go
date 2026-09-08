@@ -1,0 +1,162 @@
+package models
+
+import (
+	"encoding/json"
+	"time"
+)
+
+// Jurisdiction represents a legal territory ("IN" for India, "INT" for International)
+type Jurisdiction struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"created_at,omitempty"`
+}
+
+// IPCategory represents statutory IP categories (PATENT, TRADEMARK, GI, TK, ABS, REGULATORY, DESIGN)
+type IPCategory struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	CreatedAt   time.Time `json:"created_at,omitempty"`
+}
+
+// AuthoritySource represents an issuing statutory authority (e.g. CGPDTM, NBA, CDSCO)
+type AuthoritySource struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	ShortCode     string    `json:"short_code"`
+	WebsiteURL    string    `json:"website_url,omitempty"`
+	AuthorityTier int       `json:"authority_tier"`
+	CreatedAt     time.Time `json:"created_at,omitempty"`
+}
+
+// Document represents an official legal act, rule, or gazette
+type Document struct {
+	ID              string     `json:"id"`
+	JurisdictionID  string     `json:"jurisdiction_id"`
+	SourceID        string     `json:"source_id"`
+	CategoryID      string     `json:"category_id,omitempty"`
+	Title           string     `json:"title"`
+	OfficialCode    string     `json:"official_code,omitempty"`
+	PublicationYear int        `json:"publication_year,omitempty"`
+	EffectiveDate   *time.Time `json:"effective_date,omitempty"`
+	SourceURL       string     `json:"source_url,omitempty"`
+	Language        string     `json:"language,omitempty"`
+	IsActive        bool       `json:"is_active"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+}
+
+// DocumentChunk represents a discrete, atomic statutory provision
+type DocumentChunk struct {
+	ID               string          `json:"id"`
+	DocumentID       string          `json:"document_id"`
+	ChunkIndex       int             `json:"chunk_index"`
+	SectionReference string          `json:"section_reference"`
+	PageNumber       int             `json:"page_number,omitempty"`
+	ChunkText        string          `json:"chunk_text"`
+	Embedding        []float32       `json:"embedding,omitempty"`
+	Metadata         json.RawMessage `json:"metadata,omitempty"`
+	CreatedAt        time.Time       `json:"created_at"`
+}
+
+// SearchResult represents an enriched document chunk returned from hybrid vector/keyword search
+type SearchResult struct {
+	ChunkID          string          `json:"chunk_id"`
+	DocumentID       string          `json:"document_id"`
+	DocumentTitle    string          `json:"document_title"`
+	AuthorityName    string          `json:"authority_name"`
+	CategoryID       string          `json:"category_id,omitempty"`
+	SectionReference string          `json:"section_reference"`
+	PageNumber       int             `json:"page_number,omitempty"`
+	Excerpt          string          `json:"excerpt"`
+	SourceURL        string          `json:"source_url,omitempty"`
+	Score            float64         `json:"score"`
+	Metadata         json.RawMessage `json:"metadata,omitempty"`
+}
+
+// Citation records a verified claim grounding
+type Citation struct {
+	ID            string    `json:"id,omitempty"`
+	CitationID    int       `json:"citation_id,omitempty"`
+	MessageID     string    `json:"message_id,omitempty"`
+	ChunkID       string    `json:"chunk_id,omitempty"`
+	CitationIndex int       `json:"citation_index,omitempty"`
+	Statute       string    `json:"statute,omitempty"`
+	Section       string    `json:"section,omitempty"`
+	Authority     string    `json:"authority,omitempty"`
+	URL           string    `json:"url,omitempty"`
+	Page          int       `json:"page,omitempty"`
+	Excerpt       string    `json:"excerpt,omitempty"`
+	QueryText     string    `json:"query_text,omitempty"`
+	Relevance     float64   `json:"relevance,omitempty"`
+	CreatedAt     time.Time `json:"created_at,omitempty"`
+}
+
+// DmraCondition represents a scheduled disease prohibited under DMRA 1954
+type DmraCondition struct {
+	ID                  int    `json:"id"`
+	ScheduleNumber      int    `json:"schedule_number"`
+	ConditionNameEn     string `json:"condition_name_en"`
+	ConditionNameHi     string `json:"condition_name_hi"`
+	ProhibitionCategory string `json:"prohibition_category"`
+	StatutoryRule       string `json:"statutory_rule"`
+}
+
+// AbsExemption represents an exemption category under the Biological Diversity Act
+type AbsExemption struct {
+	ID                       string `json:"id"`
+	Category                 string `json:"category"`
+	StatutoryClause          string `json:"statutory_clause"`
+	ExemptionDetails         string `json:"exemption_details"`
+	AppliesToDomesticVaidyas bool   `json:"applies_to_domestic_vaidyas"`
+}
+
+// HealthResponse represents system liveness and database pool status
+type HealthResponse struct {
+	Status            string    `json:"status"`
+	Database          string    `json:"database"`
+	Pgvector          string    `json:"pgvector"`
+	Timestamp         time.Time `json:"timestamp"`
+	Version           string    `json:"version"`
+	ZeroDataRetention bool      `json:"zero_data_retention"`
+}
+
+// APIVersionResponse represents API version info
+type APIVersionResponse struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+}
+
+// User represents a system user
+type User struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	Name      string    `json:"name,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Conversation represents a chat session
+type Conversation struct {
+	ID             string    `json:"id"`
+	SessionID      string    `json:"session_id,omitempty"`
+	UserID         string    `json:"user_id,omitempty"`
+	JurisdictionID string    `json:"jurisdiction_id,omitempty"`
+	Language       string    `json:"language,omitempty"`
+	Title          string    `json:"title,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at,omitempty"`
+}
+
+// Message represents a single chat message
+type Message struct {
+	ID             string     `json:"id"`
+	ConversationID string     `json:"conversation_id"`
+	SenderRole     string     `json:"sender_role,omitempty"`
+	Role           string     `json:"role,omitempty"` // "user" or "assistant"
+	Content        string     `json:"content"`
+	Citations      []Citation `json:"citations,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+}
