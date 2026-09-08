@@ -366,6 +366,152 @@ func (db *DB) SearchHybrid(ctx context.Context, keyword string, queryVector []fl
 	return results, rows.Err()
 }
 
+// SearchHybridWithFilters combines keyword matching, vector similarity, and jurisdiction/category filters
+func (db *DB) SearchHybridWithFilters(ctx context.Context, keyword string, queryVector []float32, jurisdictionID, categoryID string, limit int) ([]models.SearchResult, error) {
+	if db == nil || db.Pool == nil {
+		return nil, fmt.Errorf("database connection pool not initialized")
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+
+	vectorStr := FormatVectorString(queryVector)
+
+	query := `
+		SELECT 
+			c.id, c.document_id, d.title, s.name, COALESCE(d.category_id, ''), 
+			c.section_reference, COALESCE(c.page_number, 0), c.chunk_text, 
+			COALESCE(d.source_url, ''),
+			(
+				0.5 * (1.0 - (c.embedding <=> $1::vector)) + 
+				0.5 * ts_rank_cd(COALESCE(c.tsv_content, to_tsvector('english', c.chunk_text)), plainto_tsquery('english', $2))
+			) AS score,
+			COALESCE(c.metadata, '{}'::jsonb)
+		FROM document_chunks c
+		JOIN documents d ON c.document_id = d.id
+		JOIN sources s ON d.source_id = s.id
+		WHERE (c.embedding IS NOT NULL OR c.tsv_content @@ plainto_tsquery('english', $2))
+		  AND ($3 = '' OR d.jurisdiction_id = $3)
+		  AND ($4 = '' OR d.category_id = $4)
+		ORDER BY score DESC
+		LIMIT $5
+	`
+
+	rows, err := db.Pool.Query(ctx, query, vectorStr, keyword, jurisdictionID, categoryID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []models.SearchResult
+	for rows.Next() {
+		var r models.SearchResult
+		if err := rows.Scan(
+			&r.ChunkID, &r.DocumentID, &r.DocumentTitle, &r.AuthorityName, &r.CategoryID,
+			&r.SectionReference, &r.PageNumber, &r.Excerpt, &r.SourceURL, &r.Score, &r.Metadata,
+		); err != nil {
+			return nil, err
+		}
+		results = append(results, r)
+	}
+
+	return results, rows.Err()
+}
+
+// UpsertDocumentWithChunks transactionally saves a document and its atomic chunks
+func (db *DB) UpsertDocumentWithChunks(ctx context.Context, doc models.Document, chunks []models.DocumentChunk) error {
+	if db == nil || db.Pool == nil {
+		return fmt.Errorf("database connection pool not initialized")
+	}
+
+	tx, err := db.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("starting transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Ensure jurisdiction exists
+	if doc.JurisdictionID != "" {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO jurisdictions (id, name)
+			VALUES ($1, $2)
+			ON CONFLICT (id) DO NOTHING;
+		`, doc.JurisdictionID, doc.JurisdictionID)
+		if err != nil {
+			return fmt.Errorf("ensuring jurisdiction: %w", err)
+		}
+	}
+
+	// 2. Ensure category exists
+	if doc.CategoryID != "" {
+		_, err = tx.Exec(ctx, `
+			INSERT INTO ip_categories (id, name)
+			VALUES ($1, $2)
+			ON CONFLICT (id) DO NOTHING;
+		`, doc.CategoryID, doc.CategoryID)
+		if err != nil {
+			return fmt.Errorf("ensuring category: %w", err)
+		}
+	}
+
+	// 3. Upsert document
+	docQuery := `
+		INSERT INTO documents (
+			id, jurisdiction_id, source_id, category_id, title, 
+			official_code, publication_year, effective_date, source_url, language, is_active
+		) VALUES (
+			$1, $2, $3, $4, $5, 
+			$6, $7, $8, $9, $10, $11
+		) ON CONFLICT (id) DO UPDATE SET
+			title = EXCLUDED.title,
+			official_code = EXCLUDED.official_code,
+			publication_year = EXCLUDED.publication_year,
+			effective_date = EXCLUDED.effective_date,
+			source_url = EXCLUDED.source_url,
+			updated_at = NOW();
+	`
+	_, err = tx.Exec(ctx, docQuery,
+		doc.ID, doc.JurisdictionID, doc.SourceID, doc.CategoryID, doc.Title,
+		doc.OfficialCode, doc.PublicationYear, doc.EffectiveDate, doc.SourceURL, doc.Language, doc.IsActive,
+	)
+	if err != nil {
+		return fmt.Errorf("upserting document: %w", err)
+	}
+
+	// 4. Upsert chunks
+	chunkQuery := `
+		INSERT INTO document_chunks (
+			id, document_id, chunk_index, section_reference, page_number, 
+			chunk_text, embedding, tsv_content, metadata
+		) VALUES (
+			$1, $2, $3, $4, $5, 
+			$6, $7::vector, to_tsvector('english', $6), $8::jsonb
+		) ON CONFLICT (id) DO UPDATE SET
+			chunk_text = EXCLUDED.chunk_text,
+			embedding = EXCLUDED.embedding,
+			tsv_content = to_tsvector('english', EXCLUDED.chunk_text),
+			metadata = EXCLUDED.metadata;
+	`
+
+	for _, c := range chunks {
+		vecStr := FormatVectorString(c.Embedding)
+		metaJSON := string(c.Metadata)
+		if metaJSON == "" {
+			metaJSON = "{}"
+		}
+
+		_, err = tx.Exec(ctx, chunkQuery,
+			c.ID, doc.ID, c.ChunkIndex, c.SectionReference, c.PageNumber,
+			c.ChunkText, vecStr, metaJSON,
+		)
+		if err != nil {
+			return fmt.Errorf("upserting chunk %s: %w", c.SectionReference, err)
+		}
+	}
+
+	return tx.Commit(ctx)
+}
+
 // GetDmraConditions retrieves all scheduled diseases under DMRA 1954
 func (db *DB) GetDmraConditions(ctx context.Context) ([]models.DmraCondition, error) {
 	if db == nil || db.Pool == nil {
