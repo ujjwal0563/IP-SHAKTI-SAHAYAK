@@ -487,14 +487,13 @@ func (db *DB) UpsertDocumentWithChunks(ctx context.Context, doc models.Document,
 	chunkQuery := `
 		INSERT INTO document_chunks (
 			id, document_id, chunk_index, section_reference, page_number, 
-			chunk_text, embedding, tsv_content, metadata
+			chunk_text, embedding, metadata
 		) VALUES (
 			$1, $2, $3, $4, $5, 
-			$6, $7::vector, to_tsvector('english', $6), $8::jsonb
+			$6, $7::vector, $8::jsonb
 		) ON CONFLICT (id) DO UPDATE SET
 			chunk_text = EXCLUDED.chunk_text,
 			embedding = EXCLUDED.embedding,
-			tsv_content = to_tsvector('english', EXCLUDED.chunk_text),
 			metadata = EXCLUDED.metadata;
 	`
 
