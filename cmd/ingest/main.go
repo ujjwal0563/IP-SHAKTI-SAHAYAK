@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ujjwal0563/ip-shakti-sahayak/internal/config"
@@ -94,11 +95,25 @@ func main() {
 		}
 		log.Printf("  Extracted %d statutory boundary chunks.\n", len(rawChunks))
 
-		docID := fmt.Sprintf("doc-%d", time.Now().UnixNano())
+		// Determine valid UUID for document
+		docID := models.DeterministicUUID("doc", parsed.Title)
+		if parsed.CategoryID == "PATENT" && strings.Contains(parsed.Title, "Patents Act") {
+			docID = "22222222-2222-2222-2222-222222222201"
+		} else if parsed.CategoryID == "ABS" && strings.Contains(parsed.Title, "Biological Diversity") {
+			docID = "22222222-2222-2222-2222-222222222202"
+		}
+
+		sourceID := "11111111-1111-1111-1111-111111111101" // Default IPO source
+		if parsed.CategoryID == "ABS" {
+			sourceID = "11111111-1111-1111-1111-111111111102" // NBA
+		} else if parsed.CategoryID == "REGULATORY" {
+			sourceID = "11111111-1111-1111-1111-111111111103" // AYUSH
+		}
+
 		doc := models.Document{
 			ID:             docID,
 			JurisdictionID: parsed.JurisdictionID,
-			SourceID:       "11111111-1111-1111-1111-111111111101", // Default IPO source
+			SourceID:       sourceID,
 			CategoryID:     parsed.CategoryID,
 			Title:          parsed.Title,
 			OfficialCode:   parsed.OfficialCode,
@@ -110,9 +125,9 @@ func main() {
 
 		modelChunks := chunker.ConvertToModelChunks(docID, rawChunks)
 
-		// 3. Enrich each chunk with legal tags
+		// 3. Enrich each chunk with legal tags and valid UUID
 		for i := range modelChunks {
-			modelChunks[i].ID = fmt.Sprintf("chunk-%s-%d", docID, i+1)
+			modelChunks[i].ID = models.DeterministicUUID("chunk", fmt.Sprintf("%s:%d:%s", docID, i+1, modelChunks[i].SectionReference))
 			enricher.EnrichChunk(parsed, &modelChunks[i])
 		}
 
