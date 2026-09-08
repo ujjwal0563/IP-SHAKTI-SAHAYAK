@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/ujjwal0563/ip-shakti-sahayak/internal/config"
@@ -165,3 +166,99 @@ func TestAbsExemptionsEndpoint(t *testing.T) {
 		t.Error("expected fallback ABS exemptions, got 0")
 	}
 }
+
+func TestChatEndpoint(t *testing.T) {
+	cfg := &config.Config{
+		Port:           "8080",
+		AllowedOrigins: "*",
+		LLMProvider:    "mock",
+	}
+
+	handler := NewServer(cfg, nil)
+
+	payload := `{"query":"Can I patent an Ayurvedic herbal formulation with Ashwagandha?","jurisdiction":"IN","category":"PATENT"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var chatResp models.ChatResponse
+	if err := json.NewDecoder(rec.Body).Decode(&chatResp); err != nil {
+		t.Fatalf("failed to decode ChatResponse: %v", err)
+	}
+
+	if chatResp.Answer == "" {
+		t.Error("expected non-empty answer")
+	}
+
+	if len(chatResp.Citations) == 0 {
+		t.Error("expected citations in chat response, got 0")
+	}
+
+	// Verify Section 3(p) patent bar warning is mentioned in citations or answer
+	hasPatentsRef := strings.Contains(chatResp.Answer, "3(p)") || strings.Contains(chatResp.Answer, "Patents Act")
+	if !hasPatentsRef {
+		t.Errorf("expected Section 3(p) reference in answer, got: %s", chatResp.Answer)
+	}
+}
+
+func TestAssessmentEvaluateEndpoint(t *testing.T) {
+	cfg := &config.Config{
+		Port:           "8080",
+		AllowedOrigins: "*",
+	}
+
+	handler := NewServer(cfg, nil)
+
+	payload := `{
+		"innovation_type": "classical_ayurveda",
+		"uses_indian_bio_resource": true,
+		"target_market": "domestic_only",
+		"intends_to_patent": true,
+		"has_disease_claims": true,
+		"claimed_diseases": ["diabetes"]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/assessment/evaluate", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var assessment models.AssessmentOutput
+	if err := json.NewDecoder(rec.Body).Decode(&assessment); err != nil {
+		t.Fatalf("failed to decode AssessmentOutput: %v", err)
+	}
+
+	if len(assessment.Steps) != 4 {
+		t.Errorf("expected 4 assessment steps, got %d", len(assessment.Steps))
+	}
+
+	// Classical formulation + patent intent must result in PROHIBITED under Section 3(p)
+	var patentStep *models.AssessmentStep
+	for _, s := range assessment.Steps {
+		if s.Domain == "PATENT" {
+			patentStep = &s
+			break
+		}
+	}
+
+	if patentStep == nil || patentStep.Status != "PROHIBITED" {
+		t.Errorf("expected classical formulation patenting to be PROHIBITED under 3(p), got %+v", patentStep)
+	}
+
+	// Diabetes cure claim must trigger DMRA warning
+	if len(assessment.Warnings) == 0 {
+		t.Error("expected DMRA warning for diabetes cure claim, got none")
+	}
+}
+
