@@ -633,7 +633,7 @@ func (s *Server) handleDocumentUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	docID := fmt.Sprintf("doc-%d", time.Now().UnixNano())
+	docID := models.NewUUID()
 	doc := models.Document{
 		ID:             docID,
 		JurisdictionID: jurisdictionID,
@@ -648,7 +648,7 @@ func (s *Server) handleDocumentUpload(w http.ResponseWriter, r *http.Request) {
 
 	modelChunks := s.chunker.ConvertToModelChunks(docID, rawChunks)
 	for i := range modelChunks {
-		modelChunks[i].ID = fmt.Sprintf("chunk-%s-%d", docID, i+1)
+		modelChunks[i].ID = models.NewUUID()
 		s.enricher.EnrichChunk(parsed, &modelChunks[i])
 	}
 
