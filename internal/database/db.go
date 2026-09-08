@@ -454,6 +454,11 @@ func (db *DB) UpsertDocumentWithChunks(ctx context.Context, doc models.Document,
 		}
 	}
 
+	// Ensure valid UUID for document
+	if !models.IsValidUUID(doc.ID) {
+		doc.ID = models.DeterministicUUID("doc", doc.Title)
+	}
+
 	// 3. Upsert document
 	docQuery := `
 		INSERT INTO documents (
@@ -493,7 +498,12 @@ func (db *DB) UpsertDocumentWithChunks(ctx context.Context, doc models.Document,
 			metadata = EXCLUDED.metadata;
 	`
 
-	for _, c := range chunks {
+	for i, c := range chunks {
+		chunkID := c.ID
+		if !models.IsValidUUID(chunkID) {
+			chunkID = models.DeterministicUUID("chunk", fmt.Sprintf("%s:%d:%s", doc.ID, i+1, c.SectionReference))
+		}
+
 		vecStr := FormatVectorString(c.Embedding)
 		metaJSON := string(c.Metadata)
 		if metaJSON == "" {
@@ -501,7 +511,7 @@ func (db *DB) UpsertDocumentWithChunks(ctx context.Context, doc models.Document,
 		}
 
 		_, err = tx.Exec(ctx, chunkQuery,
-			c.ID, doc.ID, c.ChunkIndex, c.SectionReference, c.PageNumber,
+			chunkID, doc.ID, c.ChunkIndex, c.SectionReference, c.PageNumber,
 			c.ChunkText, vecStr, metaJSON,
 		)
 		if err != nil {
