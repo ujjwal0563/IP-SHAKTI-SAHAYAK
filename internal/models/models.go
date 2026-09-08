@@ -160,3 +160,61 @@ type Message struct {
 	Citations      []Citation `json:"citations,omitempty"`
 	CreatedAt      time.Time  `json:"created_at"`
 }
+
+// ChatRequest represents the incoming user query payload
+type ChatRequest struct {
+	SessionID    string `json:"session_id,omitempty"`
+	Query        string `json:"query"`
+	Jurisdiction string `json:"jurisdiction,omitempty"` // "IN" (default) or "INT"
+	Category     string `json:"category,omitempty"`     // "PATENT", "ABS", "TRADEMARK", etc.
+	Language     string `json:"language,omitempty"`     // "en" (default) or "hi"
+}
+
+// ChatResponse represents the generated grounded answer with citations and guardrail warnings
+type ChatResponse struct {
+	SessionID string         `json:"session_id"`
+	Answer    string         `json:"answer"`
+	Citations []Citation     `json:"citations"`
+	Warnings  []string       `json:"warnings,omitempty"`
+	Sources   []SearchResult `json:"sources,omitempty"`
+}
+
+// AssessmentInput represents input to the 5-step guided IP & Regulatory Wizard
+type AssessmentInput struct {
+	InnovationType       string `json:"innovation_type"`       // "classical_ayurveda", "novel_extract", "synergistic_combo", "device"
+	UsesIndianBioResource bool  `json:"uses_indian_bio_resource"`
+	TargetMarket         string `json:"target_market"`         // "domestic_only", "export_us", "export_eu", "global"
+	IntendsToPatent      bool   `json:"intends_to_patent"`
+	HasDiseaseClaims     bool   `json:"has_disease_claims"`
+	ClaimedDiseases      []string `json:"claimed_diseases,omitempty"`
+}
+
+// AssessmentStep summarizes compliance requirements for a specific legal domain
+type AssessmentStep struct {
+	Domain       string   `json:"domain"`       // "PATENT", "ABS_BIODIVERSITY", "AYUSH_REGULATORY", "DMRA"
+	Status       string   `json:"status"`       // "ALLOWED", "RESTRICTED", "PROHIBITED", "ACTION_REQUIRED"
+	Title        string   `json:"title"`
+	Description  string   `json:"description"`
+	ActionPoints []string `json:"action_points"`
+	KeyStatute   string   `json:"key_statute"`
+}
+
+// AssessmentOutput is the generated compliance & strategy roadmap report
+type AssessmentOutput struct {
+	Summary       string           `json:"summary"`
+	ReadinessScore int             `json:"readiness_score"` // 0 to 100
+	Steps         []AssessmentStep `json:"steps"`
+	Warnings      []string         `json:"warnings,omitempty"`
+	GeneratedAt   time.Time        `json:"generated_at"`
+}
+
+// IngestSummary reports the result of ingesting documents into PostgreSQL
+type IngestSummary struct {
+	DocumentID      string `json:"document_id"`
+	Title           string `json:"title"`
+	TotalChunks     int    `json:"total_chunks"`
+	JurisdictionID  string `json:"jurisdiction_id"`
+	CategoryID      string `json:"category_id"`
+	DurationMs      int64  `json:"duration_ms"`
+}
+
