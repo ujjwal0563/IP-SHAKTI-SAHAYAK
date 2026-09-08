@@ -1,9 +1,37 @@
 package models
 
 import (
+	"crypto/rand"
+	"crypto/sha1"
 	"encoding/json"
+	"fmt"
+	"regexp"
 	"time"
 )
+
+var uuidRegex = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// IsValidUUID checks whether a string conforms to the 8-4-4-4-12 hex UUID format
+func IsValidUUID(s string) bool {
+	return uuidRegex.MatchString(s)
+}
+
+// NewUUID generates an RFC 4122 compliant UUID v4 string
+func NewUUID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40 // Version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // Variant RFC 4122
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// DeterministicUUID generates a deterministic RFC 4122 compliant UUID (v5 style) from namespace and name
+func DeterministicUUID(namespace, name string) string {
+	h := sha1.Sum([]byte(namespace + ":" + name))
+	h[6] = (h[6] & 0x0f) | 0x50 // Version 5
+	h[8] = (h[8] & 0x3f) | 0x80 // Variant RFC 4122
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", h[0:4], h[4:6], h[6:8], h[8:10], h[10:16])
+}
 
 // Jurisdiction represents a legal territory ("IN" for India, "INT" for International)
 type Jurisdiction struct {
