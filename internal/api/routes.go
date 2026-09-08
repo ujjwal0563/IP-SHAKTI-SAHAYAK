@@ -3,28 +3,58 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/ujjwal0563/ip-shakti-sahayak/internal/assessment"
+	"github.com/ujjwal0563/ip-shakti-sahayak/internal/citation"
 	"github.com/ujjwal0563/ip-shakti-sahayak/internal/config"
 	"github.com/ujjwal0563/ip-shakti-sahayak/internal/database"
+	"github.com/ujjwal0563/ip-shakti-sahayak/internal/documents"
+	"github.com/ujjwal0563/ip-shakti-sahayak/internal/llm"
 	"github.com/ujjwal0563/ip-shakti-sahayak/internal/models"
+	"github.com/ujjwal0563/ip-shakti-sahayak/internal/rag"
 )
 
 // Server encapsulates route handlers and dependencies
 type Server struct {
-	cfg *config.Config
-	db  *database.DB
-	mux *http.ServeMux
+	cfg              *config.Config
+	db               *database.DB
+	mux              *http.ServeMux
+	llmClient        llm.Client
+	retriever        *rag.Retriever
+	contextAssembler *rag.ContextAssembler
+	citationVerifier *citation.Verifier
+	dmraGuardrail    *citation.DmraGuardrail
+	wizard           *assessment.Wizard
+	parser           *documents.Parser
+	chunker          *documents.Chunker
+	enricher         *documents.Enricher
 }
 
 // NewServer initializes routes and returns configured http.Handler
 func NewServer(cfg *config.Config, db *database.DB) http.Handler {
+	llmClient := llm.NewClient(cfg)
+	retriever := rag.NewRetriever(db, llmClient)
+
 	s := &Server{
-		cfg: cfg,
-		db:  db,
-		mux: http.NewServeMux(),
+		cfg:              cfg,
+		db:               db,
+		mux:              http.NewServeMux(),
+		llmClient:        llmClient,
+		retriever:        retriever,
+		contextAssembler: rag.NewContextAssembler(),
+		citationVerifier: citation.NewVerifier(),
+		dmraGuardrail:    citation.NewDmraGuardrail(),
+		wizard:           assessment.NewWizard(),
+		parser:           documents.NewParser(),
+		chunker:          documents.NewChunker(),
+		enricher:         documents.NewEnricher(),
 	}
 
 	s.registerRoutes()
@@ -56,7 +86,17 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/v1/test/seed", s.handleTestSeed)
 	s.mux.HandleFunc("/api/v1/test/vector-search", s.handleTestVectorSearch)
 
-	// 5. Static Frontend Server (if static web directory exists)
+	// 5. RAG Retrieval & Conversational AI Endpoints
+	s.mux.HandleFunc("/api/v1/chat", s.handleChat)
+	s.mux.HandleFunc("/api/v1/chat/stream", s.handleChatStream)
+
+	// 6. Guided IP & Regulatory Assessment Wizard
+	s.mux.HandleFunc("/api/v1/assessment/evaluate", s.handleAssessmentEvaluate)
+
+	// 7. Knowledge Ingestion & Document Upload API
+	s.mux.HandleFunc("/api/v1/admin/documents/upload", s.handleDocumentUpload)
+
+	// 8. Static Frontend Server (if static web directory exists)
 	if _, err := os.Stat(s.cfg.StaticWebDir); err == nil {
 		fs := http.FileServer(http.Dir(s.cfg.StaticWebDir))
 		s.mux.Handle("/", fs)
@@ -360,3 +400,295 @@ func (s *Server) handleTestVectorSearch(w http.ResponseWriter, r *http.Request) 
 		"results": results,
 	})
 }
+
+// handleChat processes conversational IP queries and returns grounded answers with pinpoint citations
+func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed, use POST"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req models.ChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"Invalid request payload"}`, http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Query) == "" {
+		http.Error(w, `{"error":"Query cannot be empty"}`, http.StatusBadRequest)
+		return
+	}
+
+	if req.Jurisdiction == "" {
+		req.Jurisdiction = "IN"
+	}
+	if req.Language == "" {
+		req.Language = "en"
+	}
+	if req.SessionID == "" {
+		req.SessionID = fmt.Sprintf("sess-%d", time.Now().UnixNano())
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	// 1. Check DMRA 1954 guardrails on user query
+	dmraWarnings := s.dmraGuardrail.CheckProhibitedClaims(req.Query, "")
+
+	// 2. Retrieve grounded statutory passages
+	results, err := s.retriever.Retrieve(ctx, req.Query, req.Jurisdiction, req.Category, 4)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Retrieval error: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Assemble prompt context
+	contextBlocks := s.contextAssembler.BuildContextBlocks(results)
+	userPrompt := llm.BuildUserPrompt(req.Query, req.Jurisdiction, req.Category, req.Language, contextBlocks)
+
+	// 4. Generate answer via LLM
+	answer, err := s.llmClient.Generate(ctx, llm.SystemPromptAyurvedaIP, userPrompt)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Generation error: %v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	// 5. Additional DMRA check on generated answer
+	answerDmraWarnings := s.dmraGuardrail.CheckProhibitedClaims("", answer)
+	allWarnings := append(dmraWarnings, answerDmraWarnings...)
+
+	// 6. Extract and verify pinpoint citations
+	citations := s.citationVerifier.ExtractAndVerifyCitations(answer, results)
+
+	resp := models.ChatResponse{
+		SessionID: req.SessionID,
+		Answer:    answer,
+		Citations: citations,
+		Warnings:  allWarnings,
+		Sources:   results,
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// handleChatStream streams real-time generated tokens via Server-Sent Events (SSE)
+func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	query := r.URL.Query().Get("query")
+	jurisdiction := r.URL.Query().Get("jurisdiction")
+	category := r.URL.Query().Get("category")
+	language := r.URL.Query().Get("language")
+
+	if r.Method == http.MethodPost {
+		var req models.ChatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			query = req.Query
+			jurisdiction = req.Jurisdiction
+			category = req.Category
+			language = req.Language
+		}
+	}
+
+	if strings.TrimSpace(query) == "" {
+		http.Error(w, "query parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	if jurisdiction == "" {
+		jurisdiction = "IN"
+	}
+	if language == "" {
+		language = "en"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	results, _ := s.retriever.Retrieve(ctx, query, jurisdiction, category, 4)
+	contextBlocks := s.contextAssembler.BuildContextBlocks(results)
+	userPrompt := llm.BuildUserPrompt(query, jurisdiction, category, language, contextBlocks)
+
+	tokenChan := make(chan string, 32)
+	go func() {
+		_ = s.llmClient.GenerateStream(ctx, llm.SystemPromptAyurvedaIP, userPrompt, tokenChan)
+	}()
+
+	var fullAnswer strings.Builder
+	for token := range tokenChan {
+		fullAnswer.WriteString(token)
+		payload, _ := json.Marshal(map[string]string{"token": token})
+		fmt.Fprintf(w, "data: %s\n\n", payload)
+		flusher.Flush()
+	}
+
+	citations := s.citationVerifier.ExtractAndVerifyCitations(fullAnswer.String(), results)
+	donePayload, _ := json.Marshal(map[string]any{
+		"done":      true,
+		"citations": citations,
+		"sources":   results,
+	})
+	fmt.Fprintf(w, "data: %s\n\n", donePayload)
+	flusher.Flush()
+}
+
+// handleAssessmentEvaluate evaluates innovation inputs across the 5-step IP & Regulatory Wizard
+func (s *Server) handleAssessmentEvaluate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed, use POST"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var input models.AssessmentInput
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, `{"error":"Invalid assessment payload"}`, http.StatusBadRequest)
+		return
+	}
+
+	output := s.wizard.Evaluate(input)
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(output)
+}
+
+// handleDocumentUpload handles multipart file uploads for admin knowledge ingestion
+func (s *Server) handleDocumentUpload(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed, use POST"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	// 32 MB max upload
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		http.Error(w, `{"error":"File exceeds maximum 32MB limit"}`, http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, `{"error":"'file' form field is required"}`, http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	title := r.FormValue("title")
+	if title == "" {
+		title = strings.TrimSuffix(header.Filename, filepath.Ext(header.Filename))
+	}
+	jurisdictionID := r.FormValue("jurisdiction")
+	if jurisdictionID == "" {
+		jurisdictionID = "IN"
+	}
+	categoryID := r.FormValue("category")
+	if categoryID == "" {
+		categoryID = "PATENT"
+	}
+
+	tempFile, err := os.CreateTemp("", "upload-*"+filepath.Ext(header.Filename))
+	if err != nil {
+		http.Error(w, `{"error":"Failed to create temp file"}`, http.StatusInternalServerError)
+		return
+	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+
+	if _, err := io.Copy(tempFile, file); err != nil {
+		http.Error(w, `{"error":"Failed to write temp file"}`, http.StatusInternalServerError)
+		return
+	}
+
+	startTime := time.Now()
+
+	// Parse
+	parsed, err := s.parser.ParseFile(tempFile.Name())
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Failed to parse document: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	parsed.Title = title
+	parsed.JurisdictionID = jurisdictionID
+	parsed.CategoryID = categoryID
+
+	// Chunk
+	rawChunks := s.chunker.ChunkDocument(parsed)
+	if len(rawChunks) == 0 {
+		http.Error(w, `{"error":"No readable text sections found in document"}`, http.StatusBadRequest)
+		return
+	}
+
+	docID := fmt.Sprintf("doc-%d", time.Now().UnixNano())
+	doc := models.Document{
+		ID:             docID,
+		JurisdictionID: jurisdictionID,
+		SourceID:       "11111111-1111-1111-1111-111111111101",
+		CategoryID:     categoryID,
+		Title:          title,
+		Language:       "en",
+		IsActive:       true,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+
+	modelChunks := s.chunker.ConvertToModelChunks(docID, rawChunks)
+	for i := range modelChunks {
+		modelChunks[i].ID = fmt.Sprintf("chunk-%s-%d", docID, i+1)
+		s.enricher.EnrichChunk(parsed, &modelChunks[i])
+	}
+
+	// Embed
+	chunkTexts := make([]string, len(modelChunks))
+	for i, c := range modelChunks {
+		chunkTexts[i] = c.ChunkText
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	embeddings, err := s.llmClient.EmbedBatch(ctx, chunkTexts)
+	if err == nil {
+		for i := range modelChunks {
+			if i < len(embeddings) {
+				modelChunks[i].Embedding = embeddings[i]
+			}
+		}
+	} else {
+		for i := range modelChunks {
+			modelChunks[i].Embedding = make([]float32, 1536)
+		}
+	}
+
+	// Commit to DB if online
+	if s.db != nil && s.db.Ping(ctx) == nil {
+		_ = s.db.UpsertDocumentWithChunks(ctx, doc, modelChunks)
+	}
+
+	resp := models.IngestSummary{
+		DocumentID:     docID,
+		Title:          title,
+		TotalChunks:    len(modelChunks),
+		JurisdictionID: jurisdictionID,
+		CategoryID:     categoryID,
+		DurationMs:     time.Since(startTime).Milliseconds(),
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
