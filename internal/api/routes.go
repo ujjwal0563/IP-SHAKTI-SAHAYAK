@@ -19,6 +19,8 @@ import (
 	"github.com/ujjwal0563/ip-shakti-sahayak/internal/llm"
 	"github.com/ujjwal0563/ip-shakti-sahayak/internal/models"
 	"github.com/ujjwal0563/ip-shakti-sahayak/internal/rag"
+
+	"github.com/jung-kurt/gofpdf"
 )
 
 // Server encapsulates route handlers and dependencies
@@ -92,6 +94,7 @@ func (s *Server) registerRoutes() {
 
 	// 6. Guided IP & Regulatory Assessment Wizard
 	s.mux.HandleFunc("/api/v1/assessment/evaluate", s.handleAssessmentEvaluate)
+	s.mux.HandleFunc("/api/v1/assessment/export-pdf", s.handleAssessmentExportPDF)
 
 	// 7. Knowledge Ingestion & Document Upload API
 	s.mux.HandleFunc("/api/v1/admin/documents/upload", s.handleDocumentUpload)
@@ -692,3 +695,59 @@ func (s *Server) handleDocumentUpload(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// handleAssessmentExportPDF generates a PDF report from the assessment output
+func (s *Server) handleAssessmentExportPDF(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"Method not allowed, use POST"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var output models.AssessmentOutput
+	if err := json.NewDecoder(r.Body).Decode(&output); err != nil {
+		http.Error(w, `{"error":"Invalid assessment output payload"}`, http.StatusBadRequest)
+		return
+	}
+
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.AddPage()
+	
+	pdf.SetFont("Arial", "B", 16)
+	pdf.Cell(40, 10, "IP-SAKTI Sahayak Assessment Report")
+	pdf.Ln(12)
+
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(40, 10, fmt.Sprintf("Readiness Score: %d/100", output.ReadinessScore))
+	pdf.Ln(8)
+
+	pdf.SetFont("Arial", "", 12)
+	pdf.MultiCell(0, 8, "Summary: " + output.Summary, "", "", false)
+	pdf.Ln(8)
+
+	if len(output.Warnings) > 0 {
+		pdf.SetFont("Arial", "B", 12)
+		pdf.SetTextColor(255, 0, 0)
+		pdf.Cell(40, 10, "Warnings:")
+		pdf.Ln(8)
+		pdf.SetFont("Arial", "", 12)
+		for _, w := range output.Warnings {
+			pdf.MultiCell(0, 8, "- " + w, "", "", false)
+		}
+		pdf.SetTextColor(0, 0, 0)
+		pdf.Ln(8)
+	}
+
+	pdf.SetFont("Arial", "B", 12)
+	pdf.Cell(40, 10, "Steps:")
+	pdf.Ln(8)
+	pdf.SetFont("Arial", "", 12)
+	for _, step := range output.Steps {
+		pdf.MultiCell(0, 8, fmt.Sprintf("- [%s] %s: %s", step.Domain, step.Title, step.Description), "", "", false)
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="assessment_report.pdf"`)
+
+	if err := pdf.Output(w); err != nil {
+		http.Error(w, `{"error":"Failed to generate PDF"}`, http.StatusInternalServerError)
+	}
+}
