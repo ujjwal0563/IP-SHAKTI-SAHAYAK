@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/ledongthuc/pdf"
 )
 
 // ParsedDocument contains the extracted text and detected header metadata
@@ -115,41 +117,25 @@ func (p *Parser) parseJSON(data []byte, filePath string) (*ParsedDocument, error
 	return doc, nil
 }
 
-// parsePDF extracts raw text streams from standard digital PDF files without external heavy C libraries
+// parsePDF extracts text from standard digital PDF files using ledongthuc/pdf
 func (p *Parser) parsePDF(data []byte, filePath string) (*ParsedDocument, error) {
-	// Simple stream text extractor for searchable digital PDFs
-	var extracted strings.Builder
-	streamStart := []byte("stream")
-	streamEnd := []byte("endstream")
-
-	offset := 0
-	for {
-		startIdx := bytes.Index(data[offset:], streamStart)
-		if startIdx == -1 {
-			break
-		}
-		startIdx += offset + len(streamStart)
-		endIdx := bytes.Index(data[startIdx:], streamEnd)
-		if endIdx == -1 {
-			break
-		}
-		endIdx += startIdx
-
-		streamContent := data[startIdx:endIdx]
-		// Extract readable ASCII and unicode text
-		clean := filterPrintableText(streamContent)
-		if len(clean) > 30 {
-			extracted.WriteString(clean)
-			extracted.WriteString("\n")
-		}
-		offset = endIdx + len(streamEnd)
+	reader, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, fmt.Errorf("parsing pdf %s: %w", filePath, err)
 	}
 
-	textContent := extracted.String()
-	if len(strings.TrimSpace(textContent)) == 0 {
-		// Fallback: extract any printable text sequences
-		textContent = filterPrintableText(data)
+	b, err := reader.GetPlainText()
+	if err != nil {
+		return nil, fmt.Errorf("extracting text from pdf %s: %w", filePath, err)
 	}
+
+	var buf bytes.Buffer
+	_, err = buf.ReadFrom(b)
+	if err != nil {
+		return nil, fmt.Errorf("reading extracted text from pdf %s: %w", filePath, err)
+	}
+
+	textContent := buf.String()
 
 	return p.parseTextOrMarkdown(textContent, filePath)
 }
