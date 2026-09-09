@@ -378,21 +378,53 @@ func (db *DB) SearchHybridWithFilters(ctx context.Context, keyword string, query
 	vectorStr := FormatVectorString(queryVector)
 
 	query := `
+		WITH vector_search AS (
+			SELECT 
+				c.id, c.document_id, d.title, s.name AS authority_name, COALESCE(d.category_id, '') AS category_id, 
+				c.section_reference, COALESCE(c.page_number, 0) AS page_number, c.chunk_text, 
+				COALESCE(d.source_url, '') AS source_url, COALESCE(c.metadata, '{}'::jsonb) AS metadata,
+				ROW_NUMBER() OVER (ORDER BY (c.embedding <=> $1::vector) ASC) AS rank
+			FROM document_chunks c
+			JOIN documents d ON c.document_id = d.id
+			JOIN sources s ON d.source_id = s.id
+			WHERE c.embedding IS NOT NULL
+			  AND ($3 = '' OR d.jurisdiction_id = $3)
+			  AND ($4 = '' OR d.category_id = $4)
+			ORDER BY (c.embedding <=> $1::vector) ASC
+			LIMIT 100
+		),
+		text_search AS (
+			SELECT 
+				c.id, c.document_id, d.title, s.name AS authority_name, COALESCE(d.category_id, '') AS category_id, 
+				c.section_reference, COALESCE(c.page_number, 0) AS page_number, c.chunk_text, 
+				COALESCE(d.source_url, '') AS source_url, COALESCE(c.metadata, '{}'::jsonb) AS metadata,
+				ROW_NUMBER() OVER (ORDER BY ts_rank_cd(COALESCE(c.tsv_content, to_tsvector('english', c.chunk_text)), plainto_tsquery('english', $2)) DESC) AS rank
+			FROM document_chunks c
+			JOIN documents d ON c.document_id = d.id
+			JOIN sources s ON d.source_id = s.id
+			WHERE c.tsv_content @@ plainto_tsquery('english', $2)
+			  AND ($3 = '' OR d.jurisdiction_id = $3)
+			  AND ($4 = '' OR d.category_id = $4)
+			ORDER BY ts_rank_cd(COALESCE(c.tsv_content, to_tsvector('english', c.chunk_text)), plainto_tsquery('english', $2)) DESC
+			LIMIT 100
+		)
 		SELECT 
-			c.id, c.document_id, d.title, s.name, COALESCE(d.category_id, ''), 
-			c.section_reference, COALESCE(c.page_number, 0), c.chunk_text, 
-			COALESCE(d.source_url, ''),
-			(
-				0.5 * (1.0 - (c.embedding <=> $1::vector)) + 
-				0.5 * ts_rank_cd(COALESCE(c.tsv_content, to_tsvector('english', c.chunk_text)), plainto_tsquery('english', $2))
+			COALESCE(v.id, t.id) AS chunk_id,
+			COALESCE(v.document_id, t.document_id) AS document_id,
+			COALESCE(v.title, t.title) AS title,
+			COALESCE(v.authority_name, t.authority_name) AS authority_name,
+			COALESCE(v.category_id, t.category_id) AS category_id,
+			COALESCE(v.section_reference, t.section_reference) AS section_reference,
+			COALESCE(v.page_number, t.page_number) AS page_number,
+			COALESCE(v.chunk_text, t.chunk_text) AS chunk_text,
+			COALESCE(v.source_url, t.source_url) AS source_url,
+			COALESCE(
+				(1.0 / (60 + COALESCE(v.rank, 1000))) + (1.0 / (60 + COALESCE(t.rank, 1000))),
+				0.0
 			) AS score,
-			COALESCE(c.metadata, '{}'::jsonb)
-		FROM document_chunks c
-		JOIN documents d ON c.document_id = d.id
-		JOIN sources s ON d.source_id = s.id
-		WHERE (c.embedding IS NOT NULL OR c.tsv_content @@ plainto_tsquery('english', $2))
-		  AND ($3 = '' OR d.jurisdiction_id = $3)
-		  AND ($4 = '' OR d.category_id = $4)
+			COALESCE(v.metadata, t.metadata) AS metadata
+		FROM vector_search v
+		FULL OUTER JOIN text_search t ON v.id = t.id
 		ORDER BY score DESC
 		LIMIT $5
 	`
