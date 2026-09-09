@@ -50,6 +50,35 @@ func (e *Enricher) EnrichChunk(doc *ParsedDocument, chunk *models.DocumentChunk)
 		meta["abs_exemption"] = "Local Vaidyas & Hakims Exemption"
 	}
 
+	// Flag Trademark & INN requirements
+	if strings.Contains(lowerSec, "section 13") || strings.Contains(lowerText, "international non-proprietary name") {
+		meta["trademark_prohibition"] = "WHO INN / Chemical Name Registration Bar"
+	}
+	if strings.Contains(lowerSec, "section 9") && strings.Contains(lowerText, "devoid of any distinctive character") {
+		meta["trademark_bar"] = "Section 9 Absolute Grounds for Refusal"
+	}
+
+	// Flag GI non-assignability & trademark conflict
+	if strings.Contains(lowerSec, "section 24") && strings.Contains(lowerText, "assignment") {
+		meta["gi_rule"] = "Absolute Non-Assignability of GI Rights"
+	}
+	if strings.Contains(lowerSec, "section 25") && strings.Contains(lowerText, "geographical indication as trade mark") {
+		meta["gi_rule"] = "Prohibition of Registering GI as Trademark"
+	}
+
+	// Flag Jan Vishwas decriminalisation
+	if strings.Contains(lowerText, "decriminalis") || strings.Contains(lowerText, "jan vishwas") {
+		meta["is_decriminalised"] = true
+	}
+
+	// Flag CGPDTM Traditional Knowledge Guiding Principles
+	if strings.HasPrefix(lowerSec, "guiding principle") {
+		meta["cgpdtm_guideline"] = chunk.SectionReference
+		if strings.Contains(lowerText, "synerg") || strings.Contains(lowerText, "presumption of obviousness") {
+			meta["requires_synergy_proof"] = true
+		}
+	}
+
 	rawMeta, err := json.Marshal(meta)
 	if err == nil {
 		chunk.Metadata = rawMeta
