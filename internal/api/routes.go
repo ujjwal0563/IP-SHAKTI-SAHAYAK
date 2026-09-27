@@ -447,9 +447,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Assemble prompt context
+	// 3. Assemble prompt context with bilingual dual-term instructions
 	contextBlocks := s.contextAssembler.BuildContextBlocks(results)
-	userPrompt := llm.BuildUserPrompt(req.Query, req.Jurisdiction, req.Category, req.Language, contextBlocks)
+	dualTerms := s.retriever.GetGlossary().GetDualTermPromptInstructions(req.Language)
+	userPrompt := llm.BuildUserPromptWithDualTerms(req.Query, req.Jurisdiction, req.Category, req.Language, contextBlocks, dualTerms)
 
 	// 4. Generate answer via LLM
 	answer, err := s.llmClient.Generate(ctx, llm.SystemPromptAyurvedaIP, userPrompt)
@@ -522,7 +523,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 	results, _ := s.retriever.Retrieve(ctx, query, jurisdiction, category, 4)
 	contextBlocks := s.contextAssembler.BuildContextBlocks(results)
-	userPrompt := llm.BuildUserPrompt(query, jurisdiction, category, language, contextBlocks)
+	dualTerms := s.retriever.GetGlossary().GetDualTermPromptInstructions(language)
+	userPrompt := llm.BuildUserPromptWithDualTerms(query, jurisdiction, category, language, contextBlocks, dualTerms)
 
 	tokenChan := make(chan string, 32)
 	go func() {
