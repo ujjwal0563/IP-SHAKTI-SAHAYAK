@@ -1,6 +1,9 @@
 package llm
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // SystemPromptAyurvedaIP is the core grounded prompt ensuring 0% hallucination and strict statutory grounding
 const SystemPromptAyurvedaIP = `You are "IP-SAKTI Sahayak" (आईपी-शक्ति सहायक), an authoritative, bilingual decision-support assistant specializing in Indian and International Intellectual Property (IP), Access & Benefit Sharing (ABS), and AYUSH regulatory compliance for Ayurvedic innovation.
@@ -32,12 +35,22 @@ const SystemPromptAyurvedaIP = `You are "IP-SAKTI Sahayak" (आईपी-शक�
 
 // BuildUserPrompt formats the user query with retrieved context
 func BuildUserPrompt(query, jurisdiction, category, language string, contextBlocks []string) string {
+	return BuildUserPromptWithDualTerms(query, jurisdiction, category, language, contextBlocks, "")
+}
+
+// BuildUserPromptWithDualTerms formats the user query with retrieved context and bilingual dual-term rendering instructions
+func BuildUserPromptWithDualTerms(query, jurisdiction, category, language string, contextBlocks []string, dualTermInstructions string) string {
 	ctxJoined := "None available."
 	if len(contextBlocks) > 0 {
 		ctxJoined = ""
 		for i, b := range contextBlocks {
 			ctxJoined += fmt.Sprintf("\n--- [Source Passage %d] ---\n%s\n", i+1, b)
 		}
+	}
+
+	dualTermSection := ""
+	if strings.TrimSpace(dualTermInstructions) != "" {
+		dualTermSection = fmt.Sprintf("\n[BILINGUAL STATUTORY RENDERING INSTRUCTIONS]:\n%s\n", dualTermInstructions)
 	}
 
 	return fmt.Sprintf(`[USER QUERY]:
@@ -47,10 +60,10 @@ func BuildUserPrompt(query, jurisdiction, category, language string, contextBloc
 - Jurisdiction: %s
 - Target Category: %s
 - Preferred Language: %s
-
+%s
 [STATUTORY CONTEXT FROM AUTHORITATIVE DATABASE]:
 %s
 
 Please synthesize a legally precise, actionable answer grounded strictly in the statutory context above. Include pinpoint citations [^1], [^2] for all statutory references.`,
-		query, jurisdiction, category, language, ctxJoined)
+		query, jurisdiction, category, language, dualTermSection, ctxJoined)
 }
